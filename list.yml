@@ -1,29 +1,33 @@
 ---
 - name: Richard M
-  email: rms@example.com
+  notification:
+    email: rms@example.com
   wish:
     - https://a.co/foo
     - https://b.co/bar
     - https://c.co/baz
 
 - name: Linus B
-  email: lbt@example.com
+  notification:
+    email: lbt@example.com
   wish:
     - https://x.co/foo
     - https://y.co/bar
     - https://z.co/baz
 
 - name: Bill H
-  email: False
+  notification:
+    email: False
   wish:
     - https://r.co/gnu
     - https://l.co/linux
-  parents:
+  exclusions:
     - Richard M
     - Linus B
 
 - name: Steve P
-  email: spj@example.com
+  notification:
+    email: spj@example.com
   wish:
     - Linux
 
