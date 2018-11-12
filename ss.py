@@ -238,7 +238,7 @@ def main(args):
         wish = "\n- ".join(s['picked']['wish'])
         wish = wish.encode('utf-8')
 
-        msg = '{}\n---\nHola {},\nRegalas a: {}.\nLista:\n- {}\n...{}'.format(
+        msg = '{}\n---\nHola {},\nRegalas a: {}.\nLista:\n- {}\n...\n{}'.format(
             args.subject,
             s['giver']['name'],
             s['picked']['name'],
