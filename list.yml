@@ -1,7 +1,10 @@
 ---
 - name: Richard M
   notification:
-    email: rms@example.com
+    email:
+    - rms@example.com
+    sms:
+    - "+15558675309"
   wish:
     - https://a.co/foo
     - https://b.co/bar
@@ -9,7 +12,11 @@
 
 - name: Linus B
   notification:
-    email: lbt@example.com
+    email:
+    - lbt@linus.me
+    - lbt@example.com
+    sms:
+    - "+15558675309"
   wish:
     - https://x.co/foo
     - https://y.co/bar
@@ -17,17 +24,22 @@
 
 - name: Bill H
   notification:
-    email: False
+    sms:
+    - "+15558675309"
+    - "+15558675319"
   wish:
     - https://r.co/gnu
     - https://l.co/linux
-  exclusions:
+  exclude:
     - Richard M
     - Linus B
 
 - name: Steve P
   notification:
-    email: spj@example.com
+    email:
+    - spj@example.com
+    sms:
+    - "+15558675309"
   wish:
     - Linux
 

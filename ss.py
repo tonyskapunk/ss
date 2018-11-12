@@ -2,20 +2,55 @@
 # TODO: Fix logging/debugging
 # TODO: Store results, (sqlite)?
 # TODO: Able to re-send emails/sms/whatsapp/telegram/else
+# TODO: Add support to telegram: https://python-telegram-bot.org/
 # TODO: Turn into a class
 # TODO: Add command line args
 # TODO: Create package(pip)
 # TODO: Able to update wishlist(?)
 
 import sys
+import json
 import yaml
 import random
 import logging
 import argparse
+import datetime
 import requests
 from os.path import expanduser
+from os import getenv
 
-_version = "0.1.0"
+from twilio.rest import Client
+
+_version = "0.5.0"
+
+
+class SMS:
+
+    def __init__(self, recipients, msg):
+        # From twilio.com/console obtain
+        # - Account SID
+        # - Auth Token
+        # - Phone number (twilio.com/console/phone-numbers/incoming)
+        # Define environment variables with that information:
+        # export TWILIO_SID='AC0123456789abcdef01234567890abcde'
+        # export TWILIO_TOKEN='0123456789abcdef0123456789abcdef'
+        # export TWILIO_PHONE='+12345678901'
+        twilio_account_sid = getenv("TWILIO_SID")
+        twilio_token = getenv("TWILIO_TOKEN")
+        twilio_phone = getenv("TWILIO_PHONE")
+        if not (twilio_account_sid and twilio_token and twilio_phone):
+            logger.error("TWILIO Environment value missing")
+            sys.exit(1)
+
+        client = Client(twilio_account_sid, twilio_token)
+
+        for recipient in recipients:
+            message = client.messages.create(
+                to=recipient,
+                from_=twilio_phone,
+                body=msg
+            )
+            logger.info(message.sid)
 
 
 class Participants:
@@ -33,42 +68,40 @@ class Participants:
 class Notify:
     """Sends notifications through the selected provider/method"""
 
-    def __init__(self, provider):
+    def __init__(self, recipients, msg, subject, domain="ss.gift",
+                 provider="mailgun"):
         if provider == "mailgun":
-            self.__mg_api_key = ""
-            self.domain = "domainname"
-            self.sender = "ss@{}".format(domain)
-            self.mg_api_endpoint = "https://api.mailgun.net/v3"
-            self.mg_api_msg = mg_api_endpoint + "/{}/messages".format(domain)
-            self.subject = "secret satan"
-            self.text = "{} gives to {}\nwish list:\n{}"
+            self.mail_mg(recipients, msg, subject, domain)
+        pass
 
-    def mail_mg(self, secrets):
-        """Sending email to givers through mailgun.
+    def mail_mg(self, recipients, msg, subject, domain):
+        """Sending email through mailgun.
         """
-        for secret in secrets:
-            giver = secret['giver']
-            picked = secret['picked']
-            r = requests.post(
-                  self.mg_api_msg,
-                  auth=('api', self.__mg_api_key),
-                  data={
-                    'from': self.sender,
-                    'to': giver['notification']['email'],
-                    'subject': self.subject,
-                    'text': self.text.format(
-                              giver['name'],
-                              picked['name'],
-                              picked['wish'],
-                            ),
-                  },
-                )
-            if r.ok:
-                logger.info('Email to <{}> delivered.'.
-                            format(giver['notification']['email']))
-            else:
-                logger.error('Delivering to: {}.'.
-                             format(giver['notification']['email']))
+        # Define environment variables with the api key
+        # export MAILGUN_KEY='key-1234567890abcdefghijklmnopqrstuvw'
+        mg_api_key = getenv("MAILGUN_KEY")
+        if not mg_api_key:
+            logger.error("MAILGUN_KEY missing")
+            return
+
+        sender = "ss@{}".format(domain)
+        mg_api_endpoint = "https://api.mailgun.net/v3"
+        mg_api_msg = mg_api_endpoint + "/{}/messages".format(domain)
+        r = requests.post(
+                mg_api_msg,
+                auth=('api', mg_api_key),
+                data={
+                  'from': sender,
+                  'to': recipients,
+                  'subject': subject,
+                  'text': msg,
+                },
+            )
+        if r.ok:
+            logger.info('Email to <{}> delivered.'.format(recipients))
+        else:
+            logger.error('Delivering to: {}.'.format(recipients))
+        return
 
 
 class SecretSanta:
@@ -125,26 +158,26 @@ class SecretSanta:
         Receives a single participant(giver) to pick from the list of
         available participants.
         """
-        # logger.debug("Giver: {} | Available: {}".format(
-        print("Giver: {} | Available: {}".format(
+        # print("Giver: {} | Available: {}".format(
+        logger.debug("Giver: {} | Available: {}".format(
                giver['name'],
                self.get_names(available))
               )
         index_picked = random.randrange(len(available))
         picked = available[index_picked]
-        # logger.debug("Random pick: {}".format(picked['name']))
-        print("Random pick: {}".format(picked['name']))
+        logger.debug("Random pick: {}".format(picked['name']))
+        # print("Random pick: {}".format(picked['name']))
         if giver['name'] == picked['name']:
-            # logger.warning('Oops, self-giving...')
-            print('Oops, self-giving...')
+            logger.warning('Oops, self-giving...')
+            # print('Oops, self-giving...')
             if len(available) == 1:
                 return False
             available = available[:index_picked] + available[index_picked+1:]
             picked = self.pick(giver, available)
         elif 'exclude' in giver.keys():
             if picked['name'] in giver['exclude']:
-                # logger.warning('Oops, attempting to give to an exclusion...')
-                print('Oops, attempting to give to an exclusion...')
+                logger.warning('Oops, attempting to give to an exclusion...')
+                # print('Oops, attempting to give to an exclusion...')
                 if len(available) == 1:
                     return False
                 available = (available[:index_picked]
@@ -160,20 +193,21 @@ class SecretSanta:
         # The list contains a dictionary with two elements: giver and picked,
         # each one of them is a dictionary with each individual information.
         while not success:
-            print("-> Run #: {}".format(self.cycle_count))
+            self._secretsanta_list = []
+            logger.debug("--> Run #: {}".format(self.cycle_count))
+            # print("--> Run #: {}".format(self.cycle_count))
             if self.cycle_count == self.cycle_limit:
-                # logger.error("Reached the limit of attempts({}), exiting..."
-                print("Reached the limit of attempts({}), exiting..."
-                      .format(self.cycle_limit)
-                      )
+                # print("Reached the limit of attempts({}), exiting..."
+                logger.error("Reached the limit of attempts({}), "
+                             "exiting...".format(self.cycle_limit))
                 break
             available = self.participants
             random.shuffle(available)
             for giver in self.givers:
                 picked = self.pick(giver, available)
                 if not picked:
-                    # logger.warning("Can't find a right combo, starting over")
-                    print("Can't find a right combo, starting over")
+                    logger.warning("Can't find a right combo, starting over")
+                    # print("Can't find a right combo, starting over")
                     self.add_cyclecount()
                     break
                 if len(available) > 1:
@@ -183,8 +217,8 @@ class SecretSanta:
                     success = True
                 self._secretsanta_list.append({"giver": giver,
                                               "picked": picked})
-                # logger.info("{} -> {}".format(giver['name'], picked['name']))
-                print("{} -> {}".format(giver['name'], picked['name']))
+                logger.debug("{} -> {}".format(giver['name'], picked['name']))
+                # print("{} -> {}".format(giver['name'], picked['name']))
 
 
 def main(args):
@@ -197,14 +231,40 @@ def main(args):
     p = Participants(args.filename)
     ss = SecretSanta(p)
     ss.randomize()
-    print(ss.secretsanta_list)
+    logger.debug("Number of participants: {}".format(len(ss.secretsanta_list)))
+    for s in ss.secretsanta_list:
+        ts = '{:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now())
+
+        wish = "\n- ".join(s['picked']['wish'])
+        wish = wish.encode('utf-8')
+
+        msg = '{}\n---\nHola {},\nRegalas a: {}.\nLista:\n- {}\n...{}'.format(
+            args.subject,
+            s['giver']['name'],
+            s['picked']['name'],
+            wish,
+            ts
+        )
+        logger.debug(msg)
+
+        # SMS
+        if 'sms' in s['giver']['notification'].keys():
+            sms_recipients = s['giver']['notification']['sms']
+
+            sms = SMS(sms_recipients, msg)
+
+        # Email
+        if 'email' in s['giver']['notification'].keys():
+            email_recipients = ",".join(s['giver']['notification']['email'])
+
+            email = Notify(email_recipients, msg, args.subject, args.domain)
 
 
 if __name__ == "__main__":
     # Config logging
     logger = logging.getLogger('ss')
     logger.setLevel(logging.CRITICAL)
-    formatter = logging.Formatter(('%(asctime)s - %(name)s - %(levelname)s - '
+    formatter = logging.Formatter(('%(asctime)s [%(name)s] %(levelname)s: '
                                    '%(message)s'))
     ch = logging.StreamHandler()
     ch.setLevel(logging.CRITICAL)
@@ -218,6 +278,8 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', '-v', action='count',
                         help='Increase verbosity, -vvv is debug')
     parser.add_argument('--filename', '-f', required=True)
+    parser.add_argument('--subject', '-s', required=True)
+    parser.add_argument('--domain', '-d', required=True)
     args = parser.parse_args()
     if args.verbose:
         if args.verbose == 1:
